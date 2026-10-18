@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Users — управление</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f4f6f8;
+            color: #222;
+        }
+        h1 { color: #2c3e50; }
+        .container { max-width: 1000px; margin: 0 auto; } /* Немного расширил */
+        .card {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        form label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        form input, form select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .btn-submit {
+            padding: 10px 20px;
+            background: #2c7be5;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+        .btn-submit:hover { background: #1a5bb8; }
+        .btn-cancel {
+            padding: 10px 20px;
+            background: #95a5a6;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 15px;
+            margin-left: 10px;
+            display: none; /* Показываем только при редактировании */
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th { background: #f0f2f5; }
+        tr:hover { background: #fafbfc; }
+        .btn-delete {
+            background: #e74c3c;
+            color: #fff;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-edit {
+            background: #f39c12;
+            color: #fff;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .btn-refresh {
+            background: #27ae60;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .message {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .message.success { background: #d4edda; color: #155724; display: block; }
+        .message.error { background: #f8d7da; color: #721c24; display: block; }
+        .empty { color: #888; font-style: italic; padding: 20px 0; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Управление пользователями</h1>
+
+    <div id="message" class="message"></div>
+
+    <!-- Форма создания/редактирования -->
+    <div class="card">
+        <h2 id="formTitle">Создать пользователя</h2>
+        <!-- Скрытое поле для хранения ID при редактировании -->
+        <input type="hidden" id="userId">
+
+        <form id="userForm">
+            <label>Имя</label>
+            <input type="text" id="name" required>
+
+            <label>Фамилия</label>
+            <input type="text" id="surname" required>
+
+            <label>Email</label>
+            <input type="email" id="email" required>
+
+            <label>Пароль</label>
+            <input type="password" id="password" minlength="6" required autocomplete="new-password">
+
+            <label>Роль</label>
+            <select id="role" required>
+                <option value="MANAGER">Менеджер</option>
+                <option value="ADMIN">Администратор</option>
+            </select>
+
+            <button type="submit" class="btn-submit" id="submitBtn">Создать</button>
+            <button type="button" class="btn-cancel" id="cancelBtn" onclick="resetForm()">Отмена</button>
+        </form>
+    </div>
+
+    <!-- Таблица пользователей -->
+    <div class="card">
+        <h2>Пользователи</h2>
+        <button class="btn-refresh" onclick="loadUsers()">Обновить</button>
+        <div id="usersContainer">
+            <p class="empty">Загрузка...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = '/api/users';
+
+    function showMessage(text, type) {
+        const el = document.getElementById('message');
+        el.textContent = text;
+        el.className = 'message ' + type;
+        setTimeout(() => { el.className = 'message'; }, 3000);
+    }
+
+    // СБРОС ФОРМЫ (для создания нового или отмены редактирования)
+    function resetForm() {
+        document.getElementById('userForm').reset();
+        document.getElementById('userId').value = '';
+        document.getElementById('formTitle').textContent = 'Создать пользователя';
+        document.getElementById('submitBtn').textContent = 'Создать';
+        document.getElementById('cancelBtn').style.display = 'none';
+    }
+
+    // ЗАГРУЗКА ВСЕХ ПОЛЬЗОВАТЕЛЕЙ
+    async function loadUsers() {
+        const container = document.getElementById('usersContainer');
+        try {
+            const response = await fetch(API);
+            if (!response.ok) throw new Error('Ошибка загрузки');
+
+            const users = await response.json();
+
+            if (users.length === 0) {
+                container.innerHTML = '<p class="empty">Пользователей пока нет</p>';
+                return;
+            }
+
+            let html = '<table><thead><tr>' +
+                '<th>ID</th><th>Имя</th><th>Фамилия</th><th>Email</th><th>Роль</th><th>Действия</th>' +
+                '</tr></thead><tbody>';
+
+            users.forEach(u => {
+                html += `<tr>
+                    <td>${u.id}</td>
+                    <td>${u.name}</td>
+                    <td>${u.surname}</td>
+                    <td>${u.email}</td>
+                    <td>${u.role}</td>
+                    <td>
+                        <button class="btn-edit" onclick="editUser(${u.id})">Изменить</button>
+                        <button class="btn-delete" onclick="deleteUser(${u.id})">Удалить</button>
+                    </td>
+                </tr>`;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (e) {
+            container.innerHTML = '<p class="empty">Не удалось загрузить список</p>';
+            showMessage('Ошибка: ' + e.message, 'error');
+        }
+    }
+
+    // РЕДАКТИРОВАНИЕ (сначала GET по ID, потом заполняем форму)
+    async function editUser(id) {
+        try {
+            // 1. Получаем одного пользователя (GET /api/users/{id})
+            const response = await fetch(API + '/' + id);
+            if (!response.ok) throw new Error('Пользователь не найден');
+
+            const user = await response.json();
+
+            // 2. Заполняем форму
+            document.getElementById('userId').value = user.id;
+            document.getElementById('name').value = user.name;
+            document.getElementById('surname').value = user.surname;
+            document.getElementById('email').value = user.email;
+            // Пароль не подтягиваем, его нужно вводить заново при сохранении
+            document.getElementById('password').value = '';
+            document.getElementById('role').value = user.role;
+
+            // 3. Меняем интерфейс на "Режим редактирования"
+            document.getElementById('formTitle').textContent = 'Редактировать пользователя (ID: ' + user.id + ')';
+            document.getElementById('submitBtn').textContent = 'Сохранить изменения';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+
+            // Прокручиваем наверх к форме
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        } catch (e) {
+            showMessage(e.message, 'error');
+        }
+    }
+
+    // ОТПРАВКА ФОРМЫ (Создание POST или Обновление PUT)
+    document.getElementById('userForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const id = document.getElementById('userId').value;
+        const isEdit = id !== '';
+
+        const body = {
+            name: document.getElementById('name').value,
+            surname: document.getElementById('surname').value,
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value,
+            role: document.getElementById('role').value
+        };
+
+        // Определяем метод и URL
+        const method = isEdit ? 'PUT' : 'POST';
+        const url = isEdit ? (API + '/' + id) : API;
+
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || 'Ошибка сохранения');
+            }
+
+            showMessage(isEdit ? 'Пользователь обновлён' : 'Пользователь создан', 'success');
+            resetForm();
+            loadUsers();
+        } catch (e) {
+            showMessage(e.message, 'error');
+        }
+    });
+
+    // УДАЛЕНИЕ
+    async function deleteUser(id) {
+        if (!confirm('Удалить пользователя с id ' + id + '?')) return;
+
+        try {
+            const response = await fetch(API + '/' + id, { method: 'DELETE' });
+            if (!response.ok) throw new Error('Ошибка удаления');
+
+            showMessage('Пользователь удалён', 'success');
+            loadUsers();
+        } catch (e) {
+            showMessage(e.message, 'error');
+        }
+    }
+
+    // Загрузить при открытии страницы
+    loadUsers();
+</script>
+</body>
+</html>
